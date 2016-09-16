@@ -23,31 +23,42 @@
  +-----------------------------------------------------------------------+
  */
 
-// Array_search with partial matches and optional search by key
-// http://www.php.net/manual/en/function.array-search.php#95926
-function array_find($needle, $haystack, $search_keys = false)
-{
-    if (!is_array($haystack))
-        return false;
-    foreach ($haystack as $key=>$value)
-    {
-        $what = ($search_keys) ? $key : $value;
-        if (strpos($what, $needle) !== false)
-            return $key;
+function parse_plesk_output($output) {
+
+    $mapping = array(
+        'Status' => 'enable',
+        'Answer with subj:' => 'subject',
+        'Format:' => 'format',
+        'Charset:' => 'charset',
+        'Answer text:' => 'message',
+        'Attach files:' => 'ignore',
+        'Forward request:' => 'forwarder',
+        'SUCCESS:' => 'ignore',
+    );
+
+    $data = array();
+    $last_key = 'ignore';
+
+    foreach ($output as $line) {
+        foreach ($mapping as $search => $key) {
+
+            $len = strlen($search);
+
+            if (substr($line, 0, $len) == $search) {
+                $data[$key] = trim(substr($line, $len));
+                $last_key = $key;
+
+                continue 2;
+            }
+        }
+
+        $data[$last_key] .= "\n" . $line;
     }
-    return false;
-}
 
-// Parse output from Plesk CLI autoresponder
-function parse_output($output, $strkey)
-{
-    $key = array_find($strkey, $output);
-    if ($key !== false)
-        return substr($output[$key], 20);
-    else
-        return false;
-}
+    unset($data['ignore']);
 
+    return $data;
+}
 
 /*
  * Read driver function.
@@ -78,12 +89,12 @@ function vacation_read(array &$data)
         return PLUGIN_ERROR_CONNECT;
     }
 
-    $status = parse_output($output, "Status");
-    if ($status == "true")
-        $data['vacation_enable'] = true;
-    $data['vacation_subject'] = parse_output($output, "Answer with subj:");
-    $data['vacation_message'] = parse_output($output, "Answer text:");
-    $data['vacation_forwarder'] = parse_output($output, "Forward request:");
+    $result = parse_plesk_output($output);
+
+    $data['vacation_enable'] = $result['enable'] == 'true';
+    $data['vacation_subject'] = $result['subject'];
+    $data['vacation_message'] = $result['message'];
+    $data['vacation_forwarder'] = $result['forwarder'];
 
 /*
     Fields not currently used by Plesk:
